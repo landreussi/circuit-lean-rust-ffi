@@ -1,0 +1,6 @@
+name = "arith_circuit"
+version = "0.1.0"
+defaultTargets = ["ArithCircuit"]
+
+[[lean_lib]]
+name = "ArithCircuit"
