@@ -3,6 +3,7 @@ mod ffi;
 use std::ffi::CStr;
 use std::sync::Once;
 
+use lean_sys::*;
 use ffi::*;
 
 static LEAN_INIT: Once = Once::new();
@@ -12,11 +13,11 @@ pub fn init() {
     LEAN_INIT.call_once(|| unsafe {
         lean_initialize_runtime_module();
         lean_initialize_thread();
-        lean_set_panic_messages(0);
+        lean_set_panic_messages(false);
         let res = initialize_arith__circuit_ArithCircuit(1);
-        lean_set_panic_messages(1);
-        assert!(shim_io_result_is_ok(res) != 0, "Lean module init failed");
-        shim_dec(res);
+        lean_set_panic_messages(true);
+        assert!(lean_io_result_is_ok(res), "Lean module init failed");
+        lean_dec(res);
         lean_io_mark_end_initialization();
     });
 }
@@ -26,7 +27,7 @@ pub fn init() {
 /// An opaque handle to a Lean `Expr` value.
 /// Reference-counted; cloning increments the Lean refcount.
 pub struct Expr {
-    ptr: LeanObj,
+    ptr: *mut lean_object,
 }
 
 unsafe impl Send for Expr {}
@@ -36,8 +37,7 @@ impl Expr {
     /// Create a constant expression: `Expr.const n`
     pub fn constant(n: i64) -> Self {
         unsafe {
-            let lean_int = shim_int64_to_int(n);
-            // arith_expr_const consumes lean_int
+            let lean_int = lean_int64_to_int(n);
             Expr { ptr: arith_expr_const(lean_int) }
         }
     }
@@ -45,8 +45,7 @@ impl Expr {
     /// Create a variable reference: `Expr.var i`
     pub fn var(i: u32) -> Self {
         unsafe {
-            let lean_nat = shim_unsigned_to_nat(i);
-            // arith_expr_var consumes lean_nat
+            let lean_nat = lean_unsigned_to_nat(i);
             Expr { ptr: arith_expr_var(lean_nat) }
         }
     }
@@ -54,10 +53,8 @@ impl Expr {
     /// Create an addition: `Expr.add a b`
     pub fn add(a: &Expr, b: &Expr) -> Self {
         unsafe {
-            // All @[export] functions consume their args at the C level.
-            // Inc because we still need our refs after the call.
-            shim_inc(a.ptr);
-            shim_inc(b.ptr);
+            lean_inc(a.ptr);
+            lean_inc(b.ptr);
             Expr { ptr: arith_expr_add(a.ptr, b.ptr) }
         }
     }
@@ -65,8 +62,8 @@ impl Expr {
     /// Create a multiplication: `Expr.mul a b`
     pub fn mul(a: &Expr, b: &Expr) -> Self {
         unsafe {
-            shim_inc(a.ptr);
-            shim_inc(b.ptr);
+            lean_inc(a.ptr);
+            lean_inc(b.ptr);
             Expr { ptr: arith_expr_mul(a.ptr, b.ptr) }
         }
     }
@@ -74,7 +71,7 @@ impl Expr {
     /// Simplify the expression (e+0, 0+e, e*1, 1*e, const folding).
     pub fn simplify(&self) -> Self {
         unsafe {
-            shim_inc(self.ptr); // consumed by simplify
+            lean_inc(self.ptr);
             Expr { ptr: arith_expr_simplify(self.ptr) }
         }
     }
@@ -83,45 +80,41 @@ impl Expr {
     /// `env[i]` is the value of `var i`; out-of-bounds defaults to 0.
     pub fn eval(&self, env: &[i64]) -> i64 {
         unsafe {
-            // Build a Lean Array Int (we own it, refcount = 1)
-            let mut arr = shim_mk_empty_array();
+            let mut arr = lean_mk_empty_array();
             for &v in env {
-                // arith_array_push consumes arr and returns a new one
-                arr = arith_array_push(arr, shim_int64_to_int(v));
+                arr = arith_array_push(arr, lean_int64_to_int(v));
             }
-            shim_inc(self.ptr); // consumed by eval
-            // arith_expr_eval consumes both arr and self.ptr
+            lean_inc(self.ptr);
             let result = arith_expr_eval(arr, self.ptr);
-            lean_int_to_i64(result)
+            lean_obj_to_i64(result)
         }
     }
 
     /// Evaluate with a callback: `f(i)` returns the value of `var i`.
-    /// This passes a real Rust closure to Lean as a function pointer.
     pub fn eval_with(&self, f: impl Fn(usize) -> i64) -> i64 {
         let trait_obj: &dyn Fn(usize) -> i64 = &f;
         unsafe {
             let raw: [usize; 2] =
                 std::mem::transmute(trait_obj as *const dyn Fn(usize) -> i64);
             EVAL_CB_RAW.set(raw);
-            shim_set_env_callback(Some(eval_trampoline));
-            let closure = shim_make_env_closure();
-            shim_inc(self.ptr); // consumed by eval_fn
-            // arith_expr_eval_fn consumes both closure and self.ptr
+            let closure = shim_alloc_closure(
+                env_trampoline as *mut std::ffi::c_void, 1, 0,
+            );
+            lean_inc(self.ptr);
             let result = arith_expr_eval_fn(closure, self.ptr);
             EVAL_CB_RAW.set([0; 2]);
-            lean_int_to_i64(result)
+            lean_obj_to_i64(result)
         }
     }
 
     /// Pretty-print the expression.
     pub fn display(&self) -> String {
         unsafe {
-            shim_inc(self.ptr); // consumed by to_string
+            lean_inc(self.ptr);
             let lean_str = arith_expr_to_string(self.ptr);
-            let cstr = CStr::from_ptr(shim_string_cstr(lean_str));
+            let cstr = CStr::from_ptr(lean_string_cstr(lean_str) as *const i8);
             let s = cstr.to_string_lossy().into_owned();
-            shim_dec(lean_str); // we own the returned string
+            lean_dec(lean_str);
             s
         }
     }
@@ -130,8 +123,8 @@ impl Expr {
 impl Drop for Expr {
     fn drop(&mut self) {
         unsafe {
-            if shim_is_scalar(self.ptr) == 0 {
-                shim_dec(self.ptr);
+            if !lean_is_scalar(self.ptr) {
+                lean_dec(self.ptr);
             }
         }
     }
@@ -140,8 +133,8 @@ impl Drop for Expr {
 impl Clone for Expr {
     fn clone(&self) -> Self {
         unsafe {
-            if shim_is_scalar(self.ptr) == 0 {
-                shim_inc(self.ptr);
+            if !lean_is_scalar(self.ptr) {
+                lean_inc(self.ptr);
             }
         }
         Expr { ptr: self.ptr }
@@ -160,25 +153,29 @@ thread_local! {
     static EVAL_CB_RAW: std::cell::Cell<[usize; 2]> = const { std::cell::Cell::new([0; 2]) };
 }
 
-unsafe extern "C" fn eval_trampoline(idx: usize) -> i64 {
-    let raw = EVAL_CB_RAW.get();
-    if raw == [0; 2] {
-        return 0;
-    }
+/// Trampoline called by Lean when it evaluates the env closure.
+/// Receives a Lean Nat, calls back into Rust, returns a Lean Int.
+unsafe extern "C" fn env_trampoline(nat_arg: lean_obj_arg) -> lean_obj_res {
     unsafe {
+        let idx = lean_unbox(nat_arg);
+        let raw = EVAL_CB_RAW.get();
+        if raw == [0; 2] {
+            return lean_int64_to_int(0);
+        }
         let f: *const dyn Fn(usize) -> i64 = std::mem::transmute(raw);
-        (*f)(idx)
+        let val = (*f)(idx);
+        lean_int64_to_int(val)
     }
 }
 
 // ── Int extraction helper ────────────────────────────────────────
 
-unsafe fn lean_int_to_i64(obj: LeanObj) -> i64 {
+unsafe fn lean_obj_to_i64(obj: *mut lean_object) -> i64 {
     unsafe {
-        if shim_is_scalar(obj) != 0 {
-            shim_scalar_to_int64(obj)
+        if lean_is_scalar(obj) {
+            lean_scalar_to_int64(obj)
         } else {
-            panic!("big Int values not supported in FFI (value doesn't fit in i32)");
+            panic!("big Int values not supported in FFI (value doesn't fit in scalar)");
         }
     }
 }

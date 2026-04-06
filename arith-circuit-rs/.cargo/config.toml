@@ -1,0 +1,5 @@
+[env]
+# Force elan to use our project's Lean version when lean-sys's build.rs
+# runs `lean --print-prefix`, instead of falling back to lean-sys's own
+# lean-toolchain (which pins 4.23).
+ELAN_TOOLCHAIN = "leanprover/lean4:v4.29.0"
