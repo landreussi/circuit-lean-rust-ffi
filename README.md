@@ -16,13 +16,15 @@ lean/                        Lean 4 project (lake)
   lakefile.toml              build config
   lean-toolchain             pins the Lean 4 version
 
-arith-circuit-rs/            Rust crate
-  shim/arith_shim.c          C shim for Lean's inline runtime helpers
-  build.rs                   compiles shim + links Lean static libs
+arith-circuit-rs/            Rust crate (uses lean-sys for runtime bindings)
+  shim/closure_shim.c        thin C shim for lean_alloc_closure (4.23→4.29 compat)
+  build.rs                   links Lean static libs
   src/
-    ffi.rs                   raw extern "C" declarations
+    ffi.rs                   extern "C" declarations for our @[export] functions
     lib.rs                   safe Rust Expr API + tests
-  examples/demo.rs           usage demo
+  examples/
+    demo.rs                  usage demo
+    bench.rs                 Lean FFI vs native Rust performance comparison
 ```
 
 ## Key guarantee
