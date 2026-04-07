@@ -1,4 +1,4 @@
-use arith_circuit::{init, Expr};
+use arith_circuit::{Expr, init};
 
 fn main() {
     init();

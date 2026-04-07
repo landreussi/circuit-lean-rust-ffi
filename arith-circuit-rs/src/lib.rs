@@ -3,8 +3,8 @@ mod ffi;
 use std::ffi::CStr;
 use std::sync::Once;
 
-use lean_sys::*;
 use ffi::*;
+use lean_sys::*;
 
 static LEAN_INIT: Once = Once::new();
 
@@ -38,7 +38,9 @@ impl Expr {
     pub fn constant(n: i64) -> Self {
         unsafe {
             let lean_int = lean_int64_to_int(n);
-            Expr { ptr: arith_expr_const(lean_int) }
+            Expr {
+                ptr: arith_expr_const(lean_int),
+            }
         }
     }
 
@@ -46,7 +48,9 @@ impl Expr {
     pub fn var(i: u32) -> Self {
         unsafe {
             let lean_nat = lean_unsigned_to_nat(i);
-            Expr { ptr: arith_expr_var(lean_nat) }
+            Expr {
+                ptr: arith_expr_var(lean_nat),
+            }
         }
     }
 
@@ -55,7 +59,9 @@ impl Expr {
         unsafe {
             lean_inc(a.ptr);
             lean_inc(b.ptr);
-            Expr { ptr: arith_expr_add(a.ptr, b.ptr) }
+            Expr {
+                ptr: arith_expr_add(a.ptr, b.ptr),
+            }
         }
     }
 
@@ -64,7 +70,9 @@ impl Expr {
         unsafe {
             lean_inc(a.ptr);
             lean_inc(b.ptr);
-            Expr { ptr: arith_expr_mul(a.ptr, b.ptr) }
+            Expr {
+                ptr: arith_expr_mul(a.ptr, b.ptr),
+            }
         }
     }
 
@@ -72,7 +80,9 @@ impl Expr {
     pub fn simplify(&self) -> Self {
         unsafe {
             lean_inc(self.ptr);
-            Expr { ptr: arith_expr_simplify(self.ptr) }
+            Expr {
+                ptr: arith_expr_simplify(self.ptr),
+            }
         }
     }
 
@@ -94,12 +104,9 @@ impl Expr {
     pub fn eval_with(&self, f: impl Fn(usize) -> i64) -> i64 {
         let trait_obj: &dyn Fn(usize) -> i64 = &f;
         unsafe {
-            let raw: [usize; 2] =
-                std::mem::transmute(trait_obj as *const dyn Fn(usize) -> i64);
+            let raw: [usize; 2] = std::mem::transmute(trait_obj as *const dyn Fn(usize) -> i64);
             EVAL_CB_RAW.set(raw);
-            let closure = shim_alloc_closure(
-                env_trampoline as *mut std::ffi::c_void, 1, 0,
-            );
+            let closure = shim_alloc_closure(env_trampoline as *mut std::ffi::c_void, 1, 0);
             lean_inc(self.ptr);
             let result = arith_expr_eval_fn(closure, self.ptr);
             EVAL_CB_RAW.set([0; 2]);
@@ -224,10 +231,7 @@ mod tests {
         init();
 
         // x0 * x1 + x2
-        let expr = Expr::add(
-            &Expr::mul(&Expr::var(0), &Expr::var(1)),
-            &Expr::var(2),
-        );
+        let expr = Expr::add(&Expr::mul(&Expr::var(0), &Expr::var(1)), &Expr::var(2));
 
         let result = expr.eval_with(|i| match i {
             0 => 4,

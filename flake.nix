@@ -17,15 +17,12 @@
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [
           clang
-          llvmPackages.libclang
-          cargo
-          clippy
-          cargo-expand
           pkg-config
-          openssl
           elan
           lean4
           libuv
+          cargo
+          rustfmt
         ];
       };
     });

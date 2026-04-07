@@ -1,4 +1,4 @@
-use arith_circuit::{init, Expr as LeanExpr};
+use arith_circuit::{Expr as LeanExpr, init};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -13,10 +13,18 @@ enum Expr {
 }
 
 impl Expr {
-    fn constant(n: i64) -> Rc<Self> { Rc::new(Expr::Const(n)) }
-    fn var(i: u32) -> Rc<Self> { Rc::new(Expr::Var(i)) }
-    fn add(a: Rc<Expr>, b: Rc<Expr>) -> Rc<Self> { Rc::new(Expr::Add(a, b)) }
-    fn mul(a: Rc<Expr>, b: Rc<Expr>) -> Rc<Self> { Rc::new(Expr::Mul(a, b)) }
+    fn constant(n: i64) -> Rc<Self> {
+        Rc::new(Expr::Const(n))
+    }
+    fn var(i: u32) -> Rc<Self> {
+        Rc::new(Expr::Var(i))
+    }
+    fn add(a: Rc<Expr>, b: Rc<Expr>) -> Rc<Self> {
+        Rc::new(Expr::Add(a, b))
+    }
+    fn mul(a: Rc<Expr>, b: Rc<Expr>) -> Rc<Self> {
+        Rc::new(Expr::Mul(a, b))
+    }
 
     fn eval(&self, env: &[i64]) -> i64 {
         match self {
@@ -112,11 +120,31 @@ fn make_small_expr(seed: u64, num_vars: u32) -> Rc<Expr> {
     let e = leaf(&mut next);
     let f = leaf(&mut next);
 
-    let ab = if next() % 2 == 0 { Expr::add(a, b) } else { Expr::mul(a, b) };
-    let cd = if next() % 2 == 0 { Expr::add(c, d) } else { Expr::mul(c, d) };
-    let ef = if next() % 2 == 0 { Expr::add(e, f) } else { Expr::mul(e, f) };
-    let abcd = if next() % 2 == 0 { Expr::add(ab, cd) } else { Expr::mul(ab, cd) };
-    if next() % 2 == 0 { Expr::add(abcd, ef) } else { Expr::mul(abcd, ef) }
+    let ab = if next() % 2 == 0 {
+        Expr::add(a, b)
+    } else {
+        Expr::mul(a, b)
+    };
+    let cd = if next() % 2 == 0 {
+        Expr::add(c, d)
+    } else {
+        Expr::mul(c, d)
+    };
+    let ef = if next() % 2 == 0 {
+        Expr::add(e, f)
+    } else {
+        Expr::mul(e, f)
+    };
+    let abcd = if next() % 2 == 0 {
+        Expr::add(ab, cd)
+    } else {
+        Expr::mul(ab, cd)
+    };
+    if next() % 2 == 0 {
+        Expr::add(abcd, ef)
+    } else {
+        Expr::mul(abcd, ef)
+    }
 }
 
 /// Addition-only huge tree. Constants are 0 or 1 for simplification opportunities.
@@ -147,9 +175,13 @@ fn make_huge_expr(depth: u32, num_vars: u32) -> Rc<Expr> {
 // ── Timing ──────────────────────────────────────────────────────
 
 fn bench<F: FnMut()>(label: &str, iters: u32, mut f: F) -> Duration {
-    for _ in 0..3 { f(); }
+    for _ in 0..3 {
+        f();
+    }
     let start = Instant::now();
-    for _ in 0..iters { f(); }
+    for _ in 0..iters {
+        f();
+    }
     let elapsed = start.elapsed();
     let per_iter = elapsed / iters;
     println!("  {label:42} {iters:>6} iters  total {elapsed:>12.3?}  per-iter {per_iter:>10.3?}");
@@ -167,22 +199,26 @@ fn main() {
     // ════════════════════════════════════════════════════════════════
 
     let n_small = 50_000_usize;
-    let small_exprs: Vec<Rc<Expr>> =
-        (0..n_small as u64).map(|i| make_small_expr(i + 1, num_vars)).collect();
-    let lean_small: Vec<LeanExpr> =
-        small_exprs.iter().map(|e| to_lean(e)).collect();
+    let small_exprs: Vec<Rc<Expr>> = (0..n_small as u64)
+        .map(|i| make_small_expr(i + 1, num_vars))
+        .collect();
+    let lean_small: Vec<LeanExpr> = small_exprs.iter().map(|e| to_lean(e)).collect();
 
     // 1000 passes over the 50k expressions = 50M simplify calls
     let iters = 1000_u32;
 
     // -- Lean simplify
     bench("Lean simplify", iters, || {
-        for e in &lean_small { std::hint::black_box(e.simplify()); }
+        for e in &lean_small {
+            std::hint::black_box(e.simplify());
+        }
     });
 
     // -- Rust simplify
     bench("Rust simplify (Rc, sharing)", iters, || {
-        for e in &small_exprs { std::hint::black_box(simplify(e)); }
+        for e in &small_exprs {
+            std::hint::black_box(simplify(e));
+        }
     });
 
     // Pre-simplify for eval benchmarks
@@ -191,17 +227,23 @@ fn main() {
 
     // -- Lean eval (array)
     bench("Lean eval (array)", iters, || {
-        for e in &lean_simplified { std::hint::black_box(e.eval(&env)); }
+        for e in &lean_simplified {
+            std::hint::black_box(e.eval(&env));
+        }
     });
 
     // -- Lean eval_with (closure)
     bench("Lean eval_with (closure)", iters, || {
-        for e in &lean_simplified { std::hint::black_box(e.eval_with(|i| env[i])); }
+        for e in &lean_simplified {
+            std::hint::black_box(e.eval_with(|i| env[i]));
+        }
     });
 
     // -- Rust eval
     bench("Rust eval", iters, || {
-        for e in &rust_simplified { std::hint::black_box(e.eval(&env)); }
+        for e in &rust_simplified {
+            std::hint::black_box(e.eval(&env));
+        }
     });
 
     // ════════════════════════════════════════════════════════════════
@@ -221,23 +263,39 @@ fn main() {
 
         // -- simplify
         let lean_simp = lean_huge.simplify();
-        bench(&format!("  Lean simplify (depth {depth})"), huge_iters, || {
-            std::hint::black_box(lean_huge.simplify());
-        });
+        bench(
+            &format!("  Lean simplify (depth {depth})"),
+            huge_iters,
+            || {
+                std::hint::black_box(lean_huge.simplify());
+            },
+        );
 
         let rust_simp = simplify(&huge);
-        bench(&format!("  Rust simplify (depth {depth})"), huge_iters, || {
-            std::hint::black_box(simplify(&huge));
-        });
+        bench(
+            &format!("  Rust simplify (depth {depth})"),
+            huge_iters,
+            || {
+                std::hint::black_box(simplify(&huge));
+            },
+        );
 
         // -- eval
-        bench(&format!("  Lean eval array (depth {depth})"), huge_iters, || {
-            std::hint::black_box(lean_simp.eval(&env_small));
-        });
+        bench(
+            &format!("  Lean eval array (depth {depth})"),
+            huge_iters,
+            || {
+                std::hint::black_box(lean_simp.eval(&env_small));
+            },
+        );
 
-        bench(&format!("  Lean eval_with closure (depth {depth})"), huge_iters, || {
-            std::hint::black_box(lean_simp.eval_with(|i| env_small[i]));
-        });
+        bench(
+            &format!("  Lean eval_with closure (depth {depth})"),
+            huge_iters,
+            || {
+                std::hint::black_box(lean_simp.eval_with(|i| env_small[i]));
+            },
+        );
 
         bench(&format!("  Rust eval (depth {depth})"), huge_iters, || {
             std::hint::black_box(rust_simp.eval(&env_small));
