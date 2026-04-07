@@ -8,3 +8,4 @@ lean-sys = { version = "0.0.9", default-features = false, features = ["static"] 
 
 [build-dependencies]
 cc = "1"
+pkg-config = "0.3.32"

@@ -4,8 +4,8 @@ use std::process::Command;
 
 fn main() {
     let lean_prefix = {
-        let home = env::var("HOME").unwrap();
-        let lean = PathBuf::from(&home).join(".elan/bin/lean");
+        let path = Command::new("which").arg("lean").output().expect("lean isn't installed").stdout;
+        let lean = String::from_utf8(path).unwrap().trim().to_string();
         let out = Command::new(&lean)
             .arg("--print-prefix")
             .output()
@@ -21,7 +21,14 @@ fn main() {
     let project_lib = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
         .join("../lean/.lake/build/lib");
 
-    // Compile the closure shim against the real lean.h (lean_alloc_closure
+    let libuv = pkg_config::Config::new()
+        .cargo_metadata(false)
+        .probe("libuv")
+        .expect("libuv or pkg-config isn't installed")
+        .link_paths
+        .pop()
+        .expect("libuv: couldnt find any link path");
+    
     // changed between 4.23 and 4.29, so we can't use lean-sys's version).
     cc::Build::new()
         .file("shim/closure_shim.c")
@@ -30,6 +37,7 @@ fn main() {
         .compile("closure_shim");
 
     println!("cargo:rustc-link-search=native={}", project_lib.display());
+    println!("cargo:rustc-link-search=native={}", libuv.display());
     println!("cargo:rustc-link-lib=static=arith__circuit_ArithCircuit");
 
     // Libs that lean-sys doesn't link but Lean 4.29 needs
@@ -37,12 +45,13 @@ fn main() {
     println!("cargo:rustc-link-lib=static=Std");
 
     println!("cargo:rustc-link-search=native={}", lean_syslib.display());
-    println!("cargo:rustc-link-lib=static=uv");
+
     println!("cargo:rustc-link-lib=static=c++");
     println!("cargo:rustc-link-lib=static=c++abi");
     println!("cargo:rustc-link-lib=static=unwind");
 
     println!("cargo:rustc-link-lib=dylib=pthread");
+    println!("cargo:rustc-link-arg=-luv");
 
     println!("cargo:rerun-if-changed=shim/closure_shim.c");
     println!(
