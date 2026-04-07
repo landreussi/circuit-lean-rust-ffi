@@ -44,6 +44,13 @@ change the meaning of an expression.
 Prerequisites: [`elan`](https://github.com/leanprover/elan) (Lean toolchain
 manager), `rustc`/`cargo`, a C compiler.
 
+Or if you are a nix user just:
+
+```bash
+nix develop
+```
+
+To build lean and run the demo: 
 ```bash
 # Build the Lean static library
 cd lean && lake build ArithCircuit:static && cd ..
@@ -53,6 +60,12 @@ cd arith-circuit-rs && cargo test -- --test-threads=1
 
 # Run the demo
 cargo run --example demo
+```
+
+Or just:
+
+```bash
+nix run
 ```
 
 ## Example
